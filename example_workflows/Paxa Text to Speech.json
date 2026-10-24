@@ -1,0 +1,122 @@
+{
+  "last_node_id": 3,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 3,
+      "type": "Note",
+      "pos": [
+        60,
+        -120
+      ],
+      "size": [
+        420,
+        200
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Paxa needs your API key. Set PAXA_API_KEY before starting ComfyUI, or save the key in paxa_api_key.txt in the comfyui-paxa folder under custom_nodes, then restart. Don't type the key into a node: saved workflows and outputs carry every node input.\n\nKeys and free starter credits: https://paxalabs.com/app/keys\nVoices: https://paxalabs.com/voices\n\nUnder 1 Paxa credit per run."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1,
+      "type": "Paxa_TextToSpeech",
+      "pos": [
+        60,
+        120
+      ],
+      "size": [
+        420,
+        320
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Paxa_TextToSpeech",
+        "cnr_id": "comfyui-paxa",
+        "ver": "0.1.0"
+      },
+      "widgets_values": [
+        "สวัสดีค่ะ ยินดีต้อนรับสู่ Paxa Labs. Hello from ComfyUI! 你好！",
+        "foithong",
+        "paxa-tts-flash-v2",
+        1,
+        "auto",
+        ""
+      ]
+    },
+    {
+      "id": 2,
+      "type": "SaveAudioMP3",
+      "pos": [
+        540,
+        120
+      ],
+      "size": [
+        380,
+        140
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 1
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveAudioMP3",
+        "cnr_id": "comfy-core",
+        "ver": "0.42.5"
+      },
+      "widgets_values": [
+        "audio/paxa",
+        "V0"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "AUDIO"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}
