@@ -1,0 +1,10 @@
+# Your API key. Never commit it.
+paxa_api_key.txt
+paxa_api_key.txt.txt
+
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+node.zip

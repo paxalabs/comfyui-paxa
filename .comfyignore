@@ -1,0 +1,6 @@
+# Development files stay out of the registry archive.
+.github/
+scripts/
+tests/
+.python-version
+uv.lock

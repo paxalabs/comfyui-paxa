@@ -1,0 +1,55 @@
+[project]
+name = "comfyui-paxa"
+version = "0.1.0"
+description = "Text to speech in Thai, English and Mandarin Chinese from Paxa Labs: 50 voices that each speak all three, with direction tags. Speech to text with SRT or WebVTT subtitles as a research preview. Uses your own Paxa API key and credits."
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+# torch and numpy come with ComfyUI.
+dependencies = ["requests>=2.25"]
+classifiers = ["Operating System :: OS Independent"]
+
+[project.urls]
+Repository = "https://github.com/paxalabs/comfyui-paxa"
+Documentation = "https://github.com/paxalabs/comfyui-paxa#readme"
+"Bug Tracker" = "https://github.com/paxalabs/comfyui-paxa/issues"
+Homepage = "https://paxalabs.com"
+
+[tool.comfy]
+PublisherId = "paxalabs"
+DisplayName = "Paxa TTS for Thai, English and Mandarin"
+Icon = "https://raw.githubusercontent.com/paxalabs/comfyui-paxa/main/icon.svg"
+
+[dependency-groups]
+dev = [
+  "numpy>=1.25",
+  "pytest>=8",
+  "ruff>=0.6",
+  "tomli>=2; python_version < '3.11'",
+  "torch>=2.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108"]
