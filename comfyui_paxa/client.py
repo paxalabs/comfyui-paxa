@@ -330,12 +330,14 @@ def _post(
             # A file rather than bytes: urllib3 sends bytes in one sendall() that has
             # to finish within the connect timeout, and a file block by block.
             response = _http().post(url, data=io.BytesIO(payload), headers=headers, timeout=timeout)
+            _check_length(response)
         except requests.exceptions.SSLError as error:
             raise PaxaError(f"Couldn't make a secure connection to {url}: {error}") from None
         except (
             requests.ConnectionError,
             requests.Timeout,
             requests.exceptions.ChunkedEncodingError,
+            _CutShort,
         ) as error:
             failures += 1
             if failures == MAX_ATTEMPTS:
@@ -370,6 +372,22 @@ def _post(
             )
         log.warning("Paxa: %s; retrying in %d s", code or response.status_code, delay)
         _wait(delay)
+
+
+class _CutShort(Exception):
+    pass
+
+
+def _check_length(response: requests.Response) -> None:
+    """Raises _CutShort if the answer stopped before its Content-Length.
+
+    urllib3 2 raises for this itself, but urllib3 1.26, which requests 2.25 and
+    later also run on, returns whatever arrived.
+    """
+    expected = response.headers.get("content-length", "")
+    received = response.raw.tell()
+    if expected.isdigit() and received < int(expected):
+        raise _CutShort(f"the answer stopped after {received:,} of {int(expected):,} bytes")
 
 
 def _problem_code(response: requests.Response) -> str | None:

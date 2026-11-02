@@ -81,6 +81,7 @@ def test_extensible_pcm_is_read():
         (b"RIFF" + struct.pack("<I", 4) + b"WAVE", "no audio data"),
         (b"RIFF\x00\x00\x00\x00WAVEdata\x02\x00\x00\x00\x01\x02", "data before its format"),
         (wav_bytes(b""), "holds no audio"),
+        (wav_bytes(pcm(1, 2, 3, 4))[:-2], "cut short: it holds 6 of the 8 bytes"),
     ],
 )
 def test_broken_wav_is_refused(data, message):

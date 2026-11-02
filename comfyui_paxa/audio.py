@@ -111,7 +111,12 @@ def _read_pcm16(data: bytes) -> tuple[int, int, bytes]:
                 raise ValueError(
                     f"Paxa's WAV is format {audio_format}, {bits}-bit; the node reads 16-bit PCM."
                 )
-            end = len(data) if size == UNKNOWN_SIZE else min(start + size, len(data))
+            if size != UNKNOWN_SIZE and start + size > len(data):
+                raise ValueError(
+                    f"Paxa's WAV is cut short: it holds {len(data) - start:,} of the "
+                    f"{size:,} bytes of audio its header gives."
+                )
+            end = len(data) if size == UNKNOWN_SIZE else start + size
             pcm = data[start:end]
             whole = len(pcm) - len(pcm) % (2 * channels)
             if whole == 0:

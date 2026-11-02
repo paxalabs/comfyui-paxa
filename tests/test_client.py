@@ -9,6 +9,7 @@ import time
 import types
 
 import pytest
+import urllib3
 from fake_paxa import KEY, STATUS, STT_MAX_BYTES, Reply, Uplink, problem, wav_bytes
 
 from comfyui_paxa import __version__, client
@@ -321,6 +322,31 @@ def test_body_cut_short_is_retried_with_the_same_key(fake, waits):
         "POST /v1/tts", Reply(200, wav_bytes(b"\0\0" * 500), {"content-type": "audio/wav"}, cut=50)
     )
     assert len(speak()) > 50
+    first, second = fake.calls_to("/v1/tts")
+    assert first.headers["idempotency-key"] == second.headers["idempotency-key"]
+    assert waits == [1]
+
+
+@pytest.fixture
+def lenient_lengths(monkeypatch):
+    """Reads answers as urllib3 1.26 does: one that stops early raises nothing."""
+    if urllib3.__version__.startswith("1."):
+        return
+    pool = urllib3.connectionpool.HTTPConnectionPool
+    make_request = pool._make_request
+
+    def lenient(self, *args, **kwargs):
+        return make_request(self, *args, **{**kwargs, "enforce_content_length": False})
+
+    monkeypatch.setattr(pool, "_make_request", lenient)
+
+
+def test_body_cut_short_is_retried_where_urllib3_doesnt_check(fake, waits, lenient_lengths):
+    fake.script(
+        "POST /v1/tts", Reply(200, wav_bytes(b"\0\0" * 500), {"content-type": "audio/wav"}, cut=50)
+    )
+    audio = speak()
+    assert struct.unpack_from("<I", audio, 40)[0] == len(audio) - 44
     first, second = fake.calls_to("/v1/tts")
     assert first.headers["idempotency-key"] == second.headers["idempotency-key"]
     assert waits == [1]
