@@ -5,10 +5,11 @@ import re
 import socket
 import struct
 import sys
+import time
 import types
 
 import pytest
-from fake_paxa import KEY, STATUS, Reply, problem, wav_bytes
+from fake_paxa import KEY, STATUS, STT_MAX_BYTES, Reply, Uplink, problem, wav_bytes
 
 from comfyui_paxa import __version__, client
 
@@ -416,3 +417,38 @@ def test_stand_in_refuses_audio_it_cannot_read(fake):
     with pytest.raises(client.PaxaError) as error:
         transcribe(audio_base64=base64.b64encode(b"not audio").decode())
     assert error.value.code == "audio_invalid"
+
+
+# Uploads: the connect timeout bounds each block sent, not the whole body.
+
+
+def largest_recording() -> str:
+    """The largest WAV the node sends, 13.65 minutes at 16 kHz, as base64."""
+    frames = (STT_MAX_BYTES - 44) // 2
+    return base64.b64encode(wav_bytes(b"\0\0" * frames, rate=16_000)).decode()
+
+
+def test_a_slow_upload_can_outlast_the_connect_timeout(fake, waits, monkeypatch):
+    monkeypatch.setattr(client, "STT_TIMEOUT", (0.5, 10.0))
+    fake.uplink = Uplink(rate=18_000_000)  # about 2 s for the whole body
+    audio = largest_recording()
+    started = time.monotonic()
+    assert transcribe(audio_base64=audio)["text"] == fake.transcript
+    assert time.monotonic() - started > 1.0
+    (call,) = fake.calls_to("/v1/stt")
+    assert call.body["audio"] == audio
+    assert waits == []
+
+
+def test_a_stalled_upload_still_times_out(fake, waits, monkeypatch):
+    monkeypatch.setattr(client, "STT_TIMEOUT", (0.3, 10.0))
+    fake.uplink = Uplink(stall_after=1_000_000, stall_for=1.5)
+    started = time.monotonic()
+    with pytest.raises(client.PaxaError, match="Couldn't reach Paxa"):
+        transcribe(audio_base64=largest_recording())
+    # Each attempt gives up on its own, before the stand-in would hang up.
+    assert time.monotonic() - started < 4 * 1.5
+    calls = fake.calls_to("/v1/stt")
+    assert len(calls) == 4
+    assert len({call.headers["idempotency-key"] for call in calls}) == 1
+    assert waits == [1, 2, 4]

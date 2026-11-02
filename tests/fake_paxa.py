@@ -101,6 +101,15 @@ class Reply:
     cut: int | None = None  # send only this many body bytes, then hang up
 
 
+@dataclass
+class Uplink:
+    """How the stand-in reads request bodies: as they come, slowly, or not at all."""
+
+    rate: float = 0.0  # bytes a second; 0 reads as fast as they arrive
+    stall_after: int | None = None  # stop reading after this many bytes,
+    stall_for: float = 1.0  # wait this long, then hang up without answering
+
+
 def problem(code: str, **headers: str) -> Reply:
     return Reply(
         STATUS[code],
@@ -122,6 +131,7 @@ class FakePaxa:
         self.voices = voices
         self.calls: list[Call] = []
         self.scripted: dict[str, list[Reply]] = {}
+        self.uplink = Uplink()
         self.transcript = "สวัสดีค่ะ ยินดีต้อนรับ"
         self._lock = threading.Lock()
         self._counter = 0
@@ -166,12 +176,18 @@ class FakePaxa:
 
     def _handle(self, handler: BaseHTTPRequestHandler, method: str) -> None:
         length = int(handler.headers.get("content-length") or 0)
-        raw = handler.rfile.read(length) if length else b""
+        headers = {name.lower(): value for name, value in handler.headers.items()}
+        raw = self._read_body(handler, length)
+        if raw is None:
+            with self._lock:
+                self.calls.append(Call(method, handler.path, headers, None))
+            time.sleep(self.uplink.stall_for)
+            handler.close_connection = True
+            return
         try:
             body = json.loads(raw) if raw else None
         except ValueError:
             body = raw
-        headers = {name.lower(): value for name, value in handler.headers.items()}
         with self._lock:
             self.calls.append(Call(method, handler.path, headers, body))
             self._counter += 1
@@ -181,6 +197,23 @@ class FakePaxa:
         if reply is None:
             reply = self._answer(method, handler.path, headers, raw, body)
         self._send(handler, reply, request_id)
+
+    def _read_body(self, handler: BaseHTTPRequestHandler, length: int) -> bytes | None:
+        """Reads the body as the uplink allows; None if it stalls or ends early."""
+        uplink = self.uplink
+        if not uplink.rate and uplink.stall_after is None:
+            return handler.rfile.read(length) if length else b""
+        received = bytearray()
+        while len(received) < length:
+            if uplink.stall_after is not None and len(received) >= uplink.stall_after:
+                return None
+            block = handler.rfile.read(min(65_536, length - len(received)))
+            if not block:
+                return None
+            received += block
+            if uplink.rate:
+                time.sleep(len(block) / uplink.rate)
+        return bytes(received)
 
     def _answer(
         self, method: str, path: str, headers: dict[str, str], raw: bytes, body: Any

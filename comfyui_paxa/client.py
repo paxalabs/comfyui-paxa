@@ -6,6 +6,8 @@ input, and never appears in a log line or an error message.
 
 from __future__ import annotations
 
+import io
+import json
 import logging
 import os
 import time
@@ -28,9 +30,11 @@ DEFAULT_MODEL = "paxa-tts-flash-v2"
 MODELS = ("paxa-tts-flash-v2", "paxa-tts-flash-v1")
 STT_MODEL = "paxa-stt-lite-v1-preview"
 
-# (connect, read) seconds. The read timeout is the longest silence between
-# bytes. A transcription that runs past 110 s keeps its connection alive by
-# sending a newline every 60 s, so 180 s covers it.
+# (connect, read) seconds. The connect timeout also bounds each block of the
+# upload, so a slow upload takes as long as it needs and a stalled one fails.
+# The read timeout is the longest silence between bytes of the answer. A
+# transcription that runs past 110 s keeps its connection alive by sending a
+# newline every 60 s, so 180 s covers it.
 TTS_TIMEOUT = (10.0, 120.0)
 STT_TIMEOUT = (10.0, 180.0)
 
@@ -299,9 +303,12 @@ def _post(
         "x-paxa-client": CLIENT_TAG,
         "idempotency-key": f"comfyui-paxa-{uuid.uuid4().hex}",
     }
+    payload = json.dumps(body, allow_nan=False).encode()
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            response = _http().post(url, json=body, headers=headers, timeout=timeout)
+            # A file rather than bytes: urllib3 sends bytes in one sendall() that has
+            # to finish within the connect timeout, and a file block by block.
+            response = _http().post(url, data=io.BytesIO(payload), headers=headers, timeout=timeout)
         except requests.exceptions.SSLError as error:
             raise PaxaError(f"Couldn't make a secure connection to {url}: {error}") from None
         except (
