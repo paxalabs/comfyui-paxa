@@ -118,7 +118,10 @@ request id to quote if you contact Paxa. For example:
 
 When your plan's rate limit or concurrency limit is reached, or the model is
 briefly unavailable, the node waits and retries on its own. Every retry
-carries the same idempotency key, so a retry is never charged twice.
+carries the same idempotency key, so a retry is never charged twice. If the
+connection drops while Paxa is still working, the node waits up to 5 minutes
+for that first attempt to finish, then takes its result without a second
+charge.
 
 ## Connection and data
 

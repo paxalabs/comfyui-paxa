@@ -252,9 +252,7 @@ def test_retry_after_is_bounded(fake, waits, retry_after, expected):
     assert waits == [expected]
 
 
-@pytest.mark.parametrize(
-    "code", ["concurrency_limited", "provider_unavailable", "idempotency_in_flight"]
-)
+@pytest.mark.parametrize("code", ["concurrency_limited", "provider_unavailable"])
 def test_refusals_that_charged_nothing_back_off(fake, waits, code):
     fake.script("POST /v1/tts", problem(code), problem(code))
     speak()
@@ -279,6 +277,43 @@ def test_lost_connection_retries_with_the_same_key(fake, waits, monkeypatch):
     first, second = fake.calls_to("/v1/tts")
     assert first.headers["idempotency-key"] == second.headers["idempotency-key"]
     assert waits == [1]
+
+
+def lost_connection(monkeypatch) -> Reply:
+    """A first attempt the node gives up on while the stand-in is still working on it."""
+    monkeypatch.setattr(client, "TTS_TIMEOUT", (2.0, 0.3))
+    return Reply(200, b"late", {"content-type": "audio/wav"}, delay=1.0)
+
+
+# Until it finishes, the first attempt holds the key and, on a plan that runs
+# one request at a time, the slot. Then the retry replays its result.
+@pytest.mark.parametrize("code", ["idempotency_in_flight", "concurrency_limited"])
+def test_after_a_lost_connection_the_first_attempt_is_waited_for(fake, waits, monkeypatch, code):
+    fake.script("POST /v1/tts", lost_connection(monkeypatch), *[problem(code)] * 5)
+    assert speak()[:4] == b"RIFF"
+    assert waits == [1] + [10] * 5
+    calls = fake.calls_to("/v1/tts")
+    assert len(calls) == 7
+    assert len({call.headers["idempotency-key"] for call in calls}) == 1
+
+
+def test_waiting_for_the_first_attempt_ends_after_five_minutes(fake, waits, monkeypatch):
+    fake.script(
+        "POST /v1/tts", lost_connection(monkeypatch), *[problem("idempotency_in_flight")] * 31
+    )
+    with pytest.raises(client.PaxaError, match="still working on an earlier attempt") as error:
+        speak()
+    assert "after 5 minutes" in str(error.value)
+    assert error.value.code == "idempotency_in_flight"
+    assert waits == [1] + [10] * 30
+
+
+@pytest.mark.parametrize("code", ["idempotency_refunded", "idempotency_mismatch"])
+def test_other_idempotency_refusals_say_what_to_do(fake, code):
+    fake.script("POST /v1/tts", problem(code))
+    with pytest.raises(client.PaxaError, match="Run the workflow again") as error:
+        speak()
+    assert "Paxa refused the request (" not in str(error.value)
 
 
 def test_body_cut_short_is_retried_with_the_same_key(fake, waits):

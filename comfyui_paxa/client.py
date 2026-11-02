@@ -40,6 +40,11 @@ STT_TIMEOUT = (10.0, 180.0)
 
 MAX_ATTEMPTS = 4
 MAX_RETRY_AFTER = 60
+# After a lost connection, the first attempt can still be running at Paxa,
+# which holds its idempotency key for at most 5 minutes. Asking every 10 s
+# stays inside the free plan's 10 requests a minute.
+IN_FLIGHT_POLL = 10
+IN_FLIGHT_POLLS = 30
 
 log = logging.getLogger("comfyui-paxa")
 
@@ -112,6 +117,19 @@ MESSAGES = {
         "If it keeps failing, report the request id below."
     ),
     "not_found": "Paxa has no endpoint at {url}. If you set PAXA_BASE_URL, check it.",
+    "idempotency_in_flight": (
+        "Paxa was still working on an earlier attempt at this request after "
+        f"{IN_FLIGHT_POLL * IN_FLIGHT_POLLS // 60} minutes, so the node stopped waiting for it. "
+        "Running the workflow again sends a new request, which is charged on its own."
+    ),
+    "idempotency_refunded": (
+        "An earlier attempt at this request failed at Paxa and was refunded, so nothing was "
+        "charged. Run the workflow again."
+    ),
+    "idempotency_mismatch": (
+        "Paxa refused a retry of this request, because its idempotency key had been used for "
+        "a different request. Run the workflow again."
+    ),
 }
 
 
@@ -293,7 +311,8 @@ def _post(
     Every attempt carries the same Idempotency-Key, so a retry after a lost
     connection replays the first charge instead of making a second one. Only
     refusals that charged nothing are retried: rate and concurrency limits, an
-    unavailable model, and a replay of a request still in flight.
+    unavailable model, and a replay of a request still in flight, which waits
+    for the first attempt to finish.
     """
     url = base_url() + path
     headers = {
@@ -304,7 +323,9 @@ def _post(
         "idempotency-key": f"comfyui-paxa-{uuid.uuid4().hex}",
     }
     payload = json.dumps(body, allow_nan=False).encode()
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    failures = polls = 0
+    lost = False
+    while True:
         try:
             # A file rather than bytes: urllib3 sends bytes in one sendall() that has
             # to finish within the connect timeout, and a file block by block.
@@ -316,16 +337,31 @@ def _post(
             requests.Timeout,
             requests.exceptions.ChunkedEncodingError,
         ) as error:
-            if attempt == MAX_ATTEMPTS:
+            failures += 1
+            if failures == MAX_ATTEMPTS:
                 raise PaxaError(f"Couldn't reach Paxa at {url}: {error}") from None
-            log.warning("Paxa: %s; retrying (attempt %d of %d)", error, attempt + 1, MAX_ATTEMPTS)
-            _wait(2 ** (attempt - 1))
+            log.warning("Paxa: %s; retrying (attempt %d of %d)", error, failures + 1, MAX_ATTEMPTS)
+            lost = True
+            _wait(2 ** (failures - 1))
             continue
         if response.status_code < 400:
             return response
         code = _problem_code(response)
-        delay = _retry_delay(response, code, attempt)
-        if delay is None or attempt == MAX_ATTEMPTS:
+        # A first attempt that lost its connection may still be running, holding
+        # the key and, on a plan that runs one request at a time, the slot. Once
+        # it finishes, a retry replays its result instead of charging again.
+        if polls < IN_FLIGHT_POLLS and (
+            code == "idempotency_in_flight" or (lost and code == "concurrency_limited")
+        ):
+            polls += 1
+            log.warning(
+                "Paxa: an earlier attempt is still running; asking again in %d s", IN_FLIGHT_POLL
+            )
+            _wait(IN_FLIGHT_POLL)
+            continue
+        failures += 1
+        delay = _retry_delay(response, code, failures)
+        if delay is None or failures == MAX_ATTEMPTS:
             raise _problem_error(
                 response.status_code,
                 code,
@@ -334,7 +370,6 @@ def _post(
             )
         log.warning("Paxa: %s; retrying in %d s", code or response.status_code, delay)
         _wait(delay)
-    raise AssertionError("unreachable")
 
 
 def _problem_code(response: requests.Response) -> str | None:
@@ -354,7 +389,7 @@ def _retry_delay(response: requests.Response, code: str | None, attempt: int) ->
         value = response.headers.get("retry-after", "")
         seconds = int(value) if value.isdigit() else 5
         return min(max(seconds, 1), MAX_RETRY_AFTER)
-    if status == 429 or status == 503 or code == "idempotency_in_flight":
+    if status == 429 or status == 503:
         return 2**attempt
     return None
 
