@@ -7,6 +7,7 @@ samples] in -1..1, and "sample_rate" is an int.
 from __future__ import annotations
 
 import io
+import math
 import struct
 import wave
 from typing import Any
@@ -69,10 +70,11 @@ def audio_to_wav(
         rate = STT_RATE
         frames = mono.shape[-1]
     if _wav_size(frames) > max_bytes:
-        limit = (max_bytes - 44) / (2 * STT_RATE) / 60
+        # Rounded down, so a recording just over the limit never reads as under it.
+        limit = math.floor((max_bytes - 44) / (2 * STT_RATE) / 6) / 10
         raise ValueError(
             f"The recording is {seconds / 60:.1f} minutes long. This node sends up to "
-            f"{limit:.0f} minutes per request. Trim it with Trim Audio Duration."
+            f"{limit:.1f} minutes per request. Trim it with Trim Audio Duration."
         )
     pcm = (mono[0].clamp(-1.0, 1.0) * 32767.0).round().to(torch.int16).numpy()
     buffer = io.BytesIO()

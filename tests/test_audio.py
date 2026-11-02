@@ -184,6 +184,13 @@ def test_too_large_even_at_16_khz_is_refused(monkeypatch):
         audio.audio_to_wav(clip, max_bytes=20_000, max_seconds=3_600)
 
 
+def test_the_limit_in_the_message_is_rounded_down():
+    # 26,214,400 bytes is 13.65 minutes at 16 kHz, so just over it isn't "up to 14".
+    clip = {"waveform": torch.zeros(1, 1, 13_107_200), "sample_rate": 16_000}
+    with pytest.raises(ValueError, match=r"13\.7 minutes long\. This node sends up to 13\.6 "):
+        audio.audio_to_wav(clip, **LIMITS)
+
+
 def test_without_a_resampler_the_message_says_trim(monkeypatch):
     monkeypatch.setitem(sys.modules, "comfy", None)
     monkeypatch.setitem(sys.modules, "comfy.audio", None)
