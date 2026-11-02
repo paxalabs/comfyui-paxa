@@ -45,7 +45,10 @@ def test_registry_metadata():
     assert (ROOT / "icon.svg").read_text().startswith("<svg")
     assert PYPROJECT["project"]["license"] == {"file": "LICENSE"}
     assert (ROOT / "LICENSE").read_text().startswith("MIT License")
-    assert PYPROJECT["project"]["urls"]["Repository"] == "https://github.com/paxalabs/comfyui-paxa"
+    # comfy-cli reads these key names for the registry page.
+    urls = PYPROJECT["project"]["urls"]
+    assert urls["Repository"] == "https://github.com/paxalabs/comfyui-paxa"
+    assert urls["Issues"] == "https://github.com/paxalabs/comfyui-paxa/issues"
 
 
 def test_key_file_is_never_committed_or_published():

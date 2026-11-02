@@ -11,7 +11,7 @@ classifiers = ["Operating System :: OS Independent"]
 [project.urls]
 Repository = "https://github.com/paxalabs/comfyui-paxa"
 Documentation = "https://github.com/paxalabs/comfyui-paxa#readme"
-"Bug Tracker" = "https://github.com/paxalabs/comfyui-paxa/issues"
+Issues = "https://github.com/paxalabs/comfyui-paxa/issues"
 Homepage = "https://paxalabs.com"
 
 [tool.comfy]
