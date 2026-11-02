@@ -70,7 +70,9 @@ key typed into a node would travel with every workflow and output you share.
 
 The output is mono speech, the 24 kHz WAV Paxa sends. ComfyUI reuses a
 node's last result while its inputs stay the same, so running the workflow
-again doesn't call Paxa or spend credits until you change an input.
+again usually doesn't call Paxa. ComfyUI can drop that result, though, for
+example when you run another workflow in between or when it needs the
+memory, and then the node calls Paxa and spends credits again.
 
 ### Paxa Speech to Text (preview)
 
